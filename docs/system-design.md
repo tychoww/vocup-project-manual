@@ -133,6 +133,18 @@ flowchart TB
 | **RDS PostgreSQL** | DB chính: user, auth, vocabulary, category, progress, quiz… Instance khuyến nghị: **db.t4g.micro** (Graviton), 20 GB gp3. Chỉ ECS (Security Group) được kết nối. |
 | **Secrets Manager** | Lưu DB URL/user/password, JWT secret, OAuth client, SES/SNS config. Inject vào ECS Task Definition (environment). Không lưu trong repo. |
 
+### 1.3.5 Domain (web) và Mail
+
+| Thành phần | Nhà cung cấp | Công dụng |
+|------------|--------------|-----------|
+| **Domain (web)** | **Cloudflare** | Mua và quản lý tên miền (ví dụ yourdomain.com). DNS do Cloudflare quản lý: trỏ root/wwww tới CloudFront; trỏ subdomain api (api.yourdomain.com) tới API Gateway hoặc qua CloudFront. Có thể bật proxy CDN của Cloudflare trước CloudFront hoặc chỉ dùng Cloudflare làm DNS. |
+| **Mail (email doanh nghiệp)** | **Zoho Mail** | Host email theo tên miền (ví dụ hello@yourdomain.com, support@yourdomain.com) cho liên hệ, hỗ trợ, nội bộ. **Tách biệt** với email giao dịch (verification, reset password…) do hệ thống gửi qua AWS SES (SNS → SQS → Lambda → SES). |
+
+**Lưu ý:**
+
+- **Cloudflare:** Sau khi có domain, cấu hình DNS: A/CNAME cho trang web → CloudFront distribution URL; A/CNAME cho api → API Gateway custom domain (hoặc CloudFront behavior `/api/*`). SSL có thể dùng certificate từ AWS ACM (khi dùng CloudFront/API Gateway) hoặc Cloudflare.
+- **Zoho:** Cấu hình MX (và SPF/DKIM/DMARC nếu Zoho hướng dẫn) tại Cloudflare DNS để mail @yourdomain.com đi qua Zoho. Tài khoản Zoho Mail đăng ký riêng, không nằm trong AWS.
+
 ---
 
 ## 1.4 Ước tính chi phí AWS (2026)
@@ -149,8 +161,10 @@ Các con số dưới đây mang tính **ước lượng** cho kiến trúc V2, 
 | API Gateway | HTTP API + VPC Link | ~1M request free tier năm đầu; sau đó ~1 USD/1M request | ~1,00 USD | ~1,00 USD |
 | Backend | ECS Fargate | 0,25 vCPU, 0,5 GB RAM, 1 task 24/7. Spot ~70% rẻ hơn On-Demand | ~3,00 USD | ~9,00 USD |
 | Database | RDS PostgreSQL | db.t4g.micro, 20 GB gp3, Single-AZ | ~12–22 USD | ~12–22 USD |
-| Khác | Route 53, Secrets Manager, CloudWatch Logs, Cloud Map | Hosted zone, vài secret, log ít | ~2–3 USD | ~2–3 USD |
-| **Tổng** | | | **~19–27 USD** (~480k–680k VNĐ) | **~25–35 USD** (~625k–875k VNĐ) |
+| Khác (AWS) | Route 53 (tùy chọn), Secrets Manager, CloudWatch Logs, Cloud Map | Hosted zone (nếu không dùng Cloudflare DNS), vài secret, log ít | ~2–3 USD | ~2–3 USD |
+| **Domain (web)** | **Cloudflare** | Đăng ký tên miền + DNS. Cloudflare tính giá domain theo TLD (ví dụ .com ~10–12 USD/năm); DNS cơ bản miễn phí. | ~1–2 USD/tháng (quy đổi theo năm) | ~1–2 USD/tháng |
+| **Mail** | **Zoho Mail** | Email theo tên miền (hello@, support@…). Zoho Mail Free: 1 domain, 5 user; bản trả phí theo user/tháng. | ~0 (Free) hoặc ~1–3 USD/user/tháng | ~0 hoặc ~1–3 USD/user/tháng |
+| **Tổng (AWS + Domain + Mail)** | | | **~20–32 USD** (~500k–800k VNĐ) | **~26–40 USD** (~650k–1M VNĐ) |
 
 **Ghi chú:**
 
@@ -238,7 +252,15 @@ Phụ thuộc giữa các stack (output/import):
 
 **Lưu ý:** ECS Task Definition cần biến môi trường: `SPRING_PROFILES_ACTIVE`, DB URL (từ Secrets), `AWS_SNS_EMAIL_TRANSACTIONAL_TOPIC_ARN` (từ output messaging). Điều này khớp với `EmailNotificationPublisher` và cấu hình trong `backend/app-service`.
 
-### 2.2.3 Liên hệ với mã nguồn
+### 2.2.3 Domain (Cloudflare) và Mail (Zoho) – ngoài CloudFormation
+
+- **Domain tại Cloudflare:** Mua domain tại [Cloudflare Registrar](https://www.cloudflare.com/products/registrar/) (hoặc chuyển domain về Cloudflare). Sau khi deploy CloudFront và API Gateway (custom domain), tại Cloudflare DNS tạo:
+  - **A/CNAME** cho trang web (ví dụ `yourdomain.com`, `www`) → trỏ tới CloudFront distribution (ví dụ `xxxx.cloudfront.net`).
+  - **A/CNAME** cho API (ví dụ `api.yourdomain.com`) → trỏ tới API Gateway custom domain hoặc cùng CloudFront (behavior `/api/*`).
+  - Bật proxy (orange cloud) tùy chọn nếu muốn qua CDN/firewall của Cloudflare.
+- **Mail tại Zoho:** Đăng ký [Zoho Mail](https://www.zoho.com/mail/) với tên miền của bạn. Tại Cloudflare DNS thêm bản ghi **MX** (và **SPF/DKIM/DMARC** theo hướng dẫn Zoho) để mail @yourdomain.com do Zoho nhận/gửi. Email giao dịch (từ ứng dụng qua SES) không phụ thuộc Zoho.
+
+### 2.2.4 Liên hệ với mã nguồn
 
 | Thành phần CloudFormation | Liên hệ source |
 |---------------------------|----------------|
@@ -253,10 +275,12 @@ Phụ thuộc giữa các stack (output/import):
 
 ## 2.3 Tóm tắt quy trình deploy end-to-end
 
-1. **Infrastructure:** Deploy lần đầu (hoặc cập nhật) CloudFormation theo thứ tự 2.2.2.
-2. **Backend:** Push code → GitLab → Build JAR → Build Docker → SonarQube → Push ECR → Cập nhật ECS Task Definition → ECS Rolling Update.
-3. **Frontend:** Push code → Build edtech-home / edtech-lms → Upload S3 → CloudFront invalidation.
-4. **Kết quả:** User truy cập qua CloudFront; `/` và `/lms/*` từ S3; `/api/*` từ API Gateway → VPC Link → Cloud Map → ECS (backend/app-service). Email do Lambda (SQS/SES) xử lý sau khi backend publish SNS.
+1. **Domain & Mail (trước hoặc song song):** Mua domain tại Cloudflare; cấu hình Zoho Mail (MX tại Cloudflare) nếu dùng email @yourdomain.com.
+2. **Infrastructure:** Deploy lần đầu (hoặc cập nhật) CloudFormation theo thứ tự 2.2.2.
+3. **DNS (Cloudflare):** Sau khi có CloudFront và API Gateway URL, trỏ domain (A/CNAME) tại Cloudflare về đúng origin.
+4. **Backend:** Push code → GitLab → Build JAR → Build Docker → SonarQube → Push ECR → Cập nhật ECS Task Definition → ECS Rolling Update.
+5. **Frontend:** Push code → Build edtech-home / edtech-lms → Upload S3 → CloudFront invalidation.
+6. **Kết quả:** User truy cập qua domain (Cloudflare DNS → CloudFront); `/` và `/lms/*` từ S3; `/api/*` từ API Gateway → ECS. Email giao dịch qua SES; email doanh nghiệp (hello@, support@…) qua Zoho Mail.
 
 ---
 
