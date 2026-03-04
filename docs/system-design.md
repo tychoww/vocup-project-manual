@@ -1,6 +1,4 @@
-# EDTECH SYSTEM DESIGN (V2 – ULTRA COST-OPTIMIZED)
-
-Tài liệu mô tả kiến trúc hệ thống EdTech, bám sát mã nguồn trong **backend** và **frontend** của repo, gồm hai mục lớn: **Tổng quan hệ thống** và **Lên kế hoạch triển khai**.
+# EDTECH SYSTEM DESIGN
 
 ---
 
@@ -33,6 +31,7 @@ Luồng được chia theo path: **root / marketing**, **LMS**, và **API**.
 ```mermaid
 flowchart TB
     User[User / Browser]
+    Domain[Domain - Cloudflare DNS]
     CF[CloudFront]
     S3Home[S3 edtechhome]
     S3LMS[S3 edtechlms]
@@ -46,7 +45,8 @@ flowchart TB
     Lambda[Lambda]
     SES[SES]
 
-    User --> CF
+    User -->|"yourdomain.com"| Domain
+    Domain --> CF
     CF -->|"/" root| S3Home
     CF -->|"/lms/*"| S3LMS
     CF -->|"/api/*"| APIGW
@@ -64,16 +64,17 @@ flowchart TB
 
 | Bước | Thành phần | Ghi chú |
 |------|------------|--------|
-| 1 | User | Truy cập trình duyệt |
-| 2 | CloudFront | Cổng chung, phân path |
-| 3a | S3 edtechhome | Khi path `/` → Next.js static (edtech-home) |
-| 3b | S3 edtechlms | Khi path `/lms/*` → React SPA (edtech-lms) |
-| 3c | API Gateway | Khi path `/api/*` → HTTP API |
-| 4 | VPC Link | Nối API Gateway vào VPC |
-| 5 | Cloud Map | Resolve tên service → IP:port ECS |
-| 6 | ECS Fargate | Chạy backend/app-service (Spring Boot) |
-| 7 | RDS | Database; ECS gọi trực tiếp |
-| 8 | SNS → SQS → Lambda → SES | Backend publish SNS; Lambda gửi email qua SES |
+| 1 | User | Gõ domain (ví dụ yourdomain.com) trên trình duyệt |
+| 2 | **Domain – Cloudflare DNS** | Phân giải tên miền → trỏ tới CloudFront (và api.yourdomain.com → API nếu dùng subdomain) |
+| 3 | CloudFront | Cổng chung, phân path theo URL |
+| 4a | S3 edtechhome | Khi path `/` → Next.js static (edtech-home) |
+| 4b | S3 edtechlms | Khi path `/lms/*` → React SPA (edtech-lms) |
+| 4c | API Gateway | Khi path `/api/*` → HTTP API |
+| 5 | VPC Link | Nối API Gateway vào VPC |
+| 6 | Cloud Map | Resolve tên service → IP:port ECS |
+| 7 | ECS Fargate | Chạy backend/app-service (Spring Boot) |
+| 8 | RDS | Database; ECS gọi trực tiếp |
+| 9 | SNS → SQS → Lambda → SES | Backend publish SNS; Lambda gửi email qua SES |
 
 **Bảng đường đi theo path:**
 
