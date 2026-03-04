@@ -134,6 +134,15 @@ flowchart TB
 | **RDS PostgreSQL** | DB chính: user, auth, vocabulary, category, progress, quiz… Instance khuyến nghị: **db.t4g.micro** (Graviton), 20 GB gp3. Chỉ ECS (Security Group) được kết nối. |
 | **Secrets Manager** | Lưu DB URL/user/password, JWT secret, OAuth client, SES/SNS config. Inject vào ECS Task Definition (environment). Không lưu trong repo. |
 
+**Độ trễ khi RDS Single-AZ (DB đặt một vùng, user ở xa):**
+
+- **ECS và RDS cùng region** (ví dụ ap-southeast-1 Singapore): ECS gọi DB trong cùng VPC, độ trễ **khoảng 1–5 ms** (rất thấp). Single-AZ không làm tăng độ trễ phần app ↔ DB.
+- **User ở xa** (ví dụ Mỹ, châu Âu, Úc): độ trễ mà user cảm nhận chủ yếu là **đường User ↔ CloudFront ↔ API Gateway ↔ ECS** (về Singapore), không phải User ↔ DB (vì user không kết nối DB trực tiếp). Ước lượng một request API round-trip:
+  - User cùng khu vực Đông Nam Á: **~20–80 ms**
+  - User ở Ấn Độ / Úc: **~80–150 ms**
+  - User ở Mỹ / châu Âu: **~150–300 ms** (có thể cao hơn tùy mạng)
+- **Cách giảm độ trễ cho user xa:** (1) Bật cache CloudFront cho API trả về dữ liệu ít đổi; (2) Sau này nếu cần có thể thêm RDS Read Replica ở region gần user (chi phí tăng).
+
 ### 1.3.5 Domain (web) và Mail
 
 | Thành phần | Nhà cung cấp | Công dụng |
