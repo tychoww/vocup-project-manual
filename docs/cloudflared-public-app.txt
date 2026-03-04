@@ -1,0 +1,10 @@
+intall cloudflare
+winget install --id Cloudflare.cloudflared
+
+run_app
+cloudflared tunnel --url http://localhost:5173
+https://chemistry-anatomy-have-spoke.trycloudflare.com
+
+run_app
+cloudflared tunnel --url http://localhost:51080
+https://aimed-metal-segment-bizarre.trycloudflare.com

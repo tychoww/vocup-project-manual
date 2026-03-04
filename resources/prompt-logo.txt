@@ -1,0 +1,11 @@
++ For the logo, use these two colors (#127278, #fb745c):
+
++ Give me 4 versions:
+
+- Version 1: Logo only - needs background removal
+
+- Version 2: Logo and text (in dark mode, the web interface is dark, the text will be #ffffff) - needs background removal
+
+- Version 3: Logo and text (in light mode, the web interface is bright, the text will be #127278) - needs background removal
+
+- Version 4: For mobile app, Logo only for mobile app icon - store ready. A mobile app icon designed for iOS and Android. Shape: A rounded square (squircle) shape filled with a solid white background - needs background removal
