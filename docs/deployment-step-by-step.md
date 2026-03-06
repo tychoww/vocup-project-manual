@@ -37,7 +37,44 @@ Sau khi xong Bước 0, làm lần lượt từ **Bước 1** trở đi.
 
 **Mục tiêu:** Tạo VPC, RDS, ECS, API Gateway, S3, CloudFront, SNS/SQS/Lambda (email) theo thứ tự trong [system-design.md](system-design.md) mục 2.2.2.
 
-**Điều kiện:** Đã có thư mục `infrastructure/` với các file YAML (network, rds, secrets, messaging, ecs, api-gateway, frontend, cloudfront). Nếu chưa có, cần viết hoặc copy template trước.
+### Toàn bộ triển khai (infra + GitLab CI/CD) nằm trong `deployment/`
+
+**Có.** Toàn bộ quá trình triển khai (hạ tầng CloudFormation **và** CI/CD GitLab) nằm trong một thư mục **`deployment/`** ở root repo (cùng cấp với `backend/`, `frontend/`, `vocup-project-manual/`).
+
+**Cấu trúc:**
+
+```
+EdTech/                          ← root repo
+├── backend/
+│   └── app-service/
+├── frontend/
+│   ├── edtech-home/
+│   └── edtech-lms/
+├── vocup-project-manual/
+├── deployment/                  ← TOÀN BỘ TRIỂN KHAI (infra + CI/CD GitLab)
+│   ├── README.md
+│   ├── infra/                   ← CloudFormation (hạ tầng AWS)
+│   │   ├── network.yaml
+│   │   ├── rds.yaml
+│   │   ├── secrets.yaml
+│   │   ├── messaging.yaml
+│   │   ├── ecs.yaml
+│   │   ├── api-gateway.yaml
+│   │   ├── frontend.yaml
+│   │   ├── cloudfront.yaml
+│   │   └── parameters/
+│   │       ├── dev.json
+│   │       └── ...
+│   └── ci/                      ← GitLab CI/CD (pipeline)
+│       └── .gitlab-ci.yml       (file pipeline; GitLab trỏ đường dẫn vào đây, không cần file ở root)
+```
+
+- **`deployment/infra/`** – Template CloudFormation và parameters. Deploy bằng AWS CLI hoặc từ pipeline.
+- **`deployment/ci/`** – Cấu hình pipeline GitLab (build, test, SonarQube, deploy backend/frontend). Trong GitLab: **Settings → CI/CD → Default CI/CD configuration file** đặt là `deployment/ci/.gitlab-ci.yml` để không cần file `.gitlab-ci.yml` ở root.
+
+**Lợi ích:** Một chỗ cho infra và CI/CD; cùng version với code; không cần repo riêng.
+
+---
 
 **Thứ tự deploy stack (bắt buộc):**
 
@@ -52,11 +89,13 @@ Sau khi xong Bước 0, làm lần lượt từ **Bước 1** trở đi.
 | 7 | **frontend** | S3 buckets (edtechhome, edtechlms), bucket policy cho CloudFront. |
 | 8 | **cloudfront** | Distribution: origins S3 + API Gateway, behaviors `/`, `/lms/*`, `/api/*`. |
 
-**Lệnh ví dụ (sau mỗi stack cần output cho stack sau):**
+**Lưu ý – Nếu sau này đổi API Gateway sang ALB:** Không cần xoá hay tạo lại network. Chỉ thay stack api-gateway bằng stack ALB, cập nhật ECS và CloudFront. Chi tiết xem [deployment/README.md](../../deployment/README.md).
+
+**Lệnh ví dụ (từ thư mục gốc repo; mỗi stack cần output từ stack trước):**
 
 ```bash
-aws cloudformation deploy --template-file infrastructure/network.yaml --stack-name edtech-dev-network --parameter-overrides ...
-# Lần lượt: rds, secrets, messaging, ecs, api-gateway, frontend, cloudfront
+aws cloudformation deploy --template-file deployment/infra/network.yaml --stack-name edtech-dev-network --parameter-overrides ...
+# Lần lượt: rds, secrets, messaging, ecs, api-gateway, frontend, cloudfront (đường dẫn deployment/infra/...)
 ```
 
 **Sau Bước 2:** Ghi lại **CloudFront distribution URL** (ví dụ `d1234abcd.cloudfront.net`) và **API Gateway URL** (nếu dùng custom domain thì sau Bước 4 mới có api.yourdomain.com).
@@ -120,4 +159,4 @@ aws cloudformation deploy --template-file infrastructure/network.yaml --stack-na
 | **4** | Deploy backend: build JAR → Docker → ECR → ECS. |
 | **5** | Deploy frontend: build edtech-home + edtech-lms → upload S3 → invalidation CloudFront. |
 
-Sau Bước 5, kiểm tra: mở yourdomain.com, yourdomain.com/lms và gọi thử API (login, health…). Nếu dùng CI/CD (GitLab/CodePipeline), các bước 4 và 5 sẽ được tự động hóa khi push code; lần đầu vẫn nên làm tay theo các bước trên để quen luồng.
+Sau Bước 5, kiểm tra: mở yourdomain.com, yourdomain.com/lms và gọi thử API (login, health…). **CI/CD GitLab:** Toàn bộ pipeline nằm trong **`deployment/ci/.gitlab-ci.yml`**. Trong GitLab đặt **Settings → CI/CD → Default CI/CD configuration file** = `deployment/ci/.gitlab-ci.yml` (không cần file ở root). Khi pipeline chạy, các bước 4 và 5 được tự động hóa; lần đầu nên làm tay để quen luồng. Xem [deployment/README.md](../../deployment/README.md).
